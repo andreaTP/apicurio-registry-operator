@@ -1,14 +1,16 @@
 package env
 
 import (
+	"reflect"
+	"strings"
+
 	c "github.com/Apicurio/apicurio-registry-operator/controllers/common"
 	"go.uber.org/zap"
 	core "k8s.io/api/core/v1"
-	"reflect"
-	"strings"
 )
 
-const JAVA_OPTIONS = "JAVA_OPTS_APPEND"
+const JAVA_OPTIONS1 = "JAVA_OPTS_APPEND"
+const JAVA_OPTIONS2 = "JAVA_OPTIONS"
 
 type envCacheEntry struct {
 	value        *core.EnvVar
@@ -223,8 +225,19 @@ func (this *envCache) processWithDependencies(depth int, processed map[string]bo
 
 func ParseJavaOptionsMap(envCache EnvCache) map[string]string {
 	javaOptions := make(map[string]string, 0)
-	if entry, exists := envCache.Get(JAVA_OPTIONS); exists {
-		for _, f := range strings.Fields(entry.GetValue().Value) {
+	entry1, exists1 := envCache.Get(JAVA_OPTIONS1)
+	entry2, exists2 := envCache.Get(JAVA_OPTIONS2)
+	var fields []string
+	if exists1 {
+		fields = strings.Fields(entry1.GetValue().Value)
+	} else {
+		fields = []string{}
+	}
+	if exists2 {
+		fields = append(fields, strings.Fields(entry2.GetValue().Value)...)
+	}
+	if len(fields) > 0 {
+		for _, f := range fields {
 			parts := strings.SplitN(f, "=", 2)
 			if len(parts) == 2 {
 				javaOptions[parts[0]] = parts[1]
@@ -248,13 +261,20 @@ func SaveJavaOptionsMap(envCache EnvCache, options map[string]string, lock bool)
 		javaOptions = javaOptions + " "
 	}
 	if javaOptions != "" {
-		entry := NewSimpleEnvCacheEntryBuilder(JAVA_OPTIONS, javaOptions).
+		entry1 := NewSimpleEnvCacheEntryBuilder(JAVA_OPTIONS1, javaOptions).
 			SetPriority(PRIORITY_SPEC)
 		if lock {
-			entry = entry.Lock()
+			entry1 = entry1.Lock()
 		}
-		envCache.Set(entry.Build())
+		envCache.Set(entry1.Build())
+		entry2 := NewSimpleEnvCacheEntryBuilder(JAVA_OPTIONS2, javaOptions).
+			SetPriority(PRIORITY_SPEC)
+		if lock {
+			entry2 = entry2.Lock()
+		}
+		envCache.Set(entry2.Build())
 	} else {
-		envCache.DeleteByName(JAVA_OPTIONS)
+		envCache.DeleteByName(JAVA_OPTIONS1)
+		envCache.DeleteByName(JAVA_OPTIONS2)
 	}
 }
